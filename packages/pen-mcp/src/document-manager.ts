@@ -12,6 +12,16 @@ const cache = new Map<string, { doc: PenDocument; mtime: number }>();
 /** Special path indicating the MCP should operate on the live Electron canvas. */
 export const LIVE_CANVAS_PATH = 'live://canvas';
 
+// 唤星本地 sidecar 加固：pen-mcp → web app `/api/mcp/*` 调用携带 sidecar token。
+// 配了 OPENPENCIL_SIDECAR_TOKEN（daemon 生产注入）则附 Bearer；裸跑不配 → 等价普通 fetch（dev/spike 友好）。
+const SIDECAR_TOKEN = process.env.OPENPENCIL_SIDECAR_TOKEN;
+function authFetch(url: string, init?: RequestInit): Promise<Response> {
+  if (!SIDECAR_TOKEN) return fetch(url, init);
+  const headers = new Headers(init?.headers);
+  headers.set('Authorization', `Bearer ${SIDECAR_TOKEN}`);
+  return fetch(url, { ...init, headers });
+}
+
 /** Resolve filePath for MCP tools — defaults to live canvas when omitted. */
 export function resolveDocPath(filePath?: string): string {
   if (!filePath || filePath === LIVE_CANVAS_PATH) return LIVE_CANVAS_PATH;
@@ -56,7 +66,7 @@ export async function getReachableSyncUrl(port: number): Promise<string | null> 
   for (let attempt = 0; attempt < 5; attempt++) {
     const probes = SYNC_BASE_URLS.map(async (baseUrl) => {
       const url = `${baseUrl}:${port}/api/mcp/server`;
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         signal: AbortSignal.timeout(500),
       });
       if (!res.ok) {
@@ -89,7 +99,7 @@ export interface LiveSyncState {
 
 async function probeLiveSyncUrl(baseUrl: string): Promise<LiveSyncAvailability> {
   try {
-    const docRes = await fetch(`${baseUrl}/api/mcp/document`, {
+    const docRes = await authFetch(`${baseUrl}/api/mcp/document`, {
       signal: AbortSignal.timeout(500),
     });
     if (docRes.ok) return 'connected';
@@ -99,7 +109,7 @@ async function probeLiveSyncUrl(baseUrl: string): Promise<LiveSyncAvailability> 
   }
 
   try {
-    const selectionRes = await fetch(`${baseUrl}/api/mcp/selection`, {
+    const selectionRes = await authFetch(`${baseUrl}/api/mcp/selection`, {
       signal: AbortSignal.timeout(500),
     });
     if (selectionRes.ok) return 'no-document';
@@ -108,7 +118,7 @@ async function probeLiveSyncUrl(baseUrl: string): Promise<LiveSyncAvailability> 
   }
 
   try {
-    const serverRes = await fetch(`${baseUrl}/api/mcp/server`, {
+    const serverRes = await authFetch(`${baseUrl}/api/mcp/server`, {
       signal: AbortSignal.timeout(500),
     });
     if (serverRes.ok) return 'no-document';
@@ -225,7 +235,7 @@ async function fetchLiveDocument(): Promise<PenDocument> {
 
   if (cachedUrl) {
     try {
-      const res = await fetch(`${cachedUrl}/api/mcp/document`);
+      const res = await authFetch(`${cachedUrl}/api/mcp/document`);
       if (res.ok) {
         const data = (await res.json()) as { document: PenDocument };
         return data.document;
@@ -242,7 +252,7 @@ async function fetchLiveDocument(): Promise<PenDocument> {
   }
   _cachedSyncUrl = sync.url;
   _cachedSyncUrlTime = Date.now();
-  const res = await fetch(`${sync.url}/api/mcp/document`);
+  const res = await authFetch(`${sync.url}/api/mcp/document`);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}) as Record<string, unknown>);
     throw new Error(
@@ -263,7 +273,7 @@ async function pushLiveDocument(doc: PenDocument): Promise<void> {
   try {
     const body = JSON.stringify({ document: doc });
     const bodyBytes = new TextEncoder().encode(body).byteLength;
-    await fetch(`${syncUrl}/api/mcp/document`, {
+    await authFetch(`${syncUrl}/api/mcp/document`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -442,7 +452,7 @@ export async function fetchLiveSelection(): Promise<{
 
   if (cachedUrl) {
     try {
-      const res = await fetch(`${cachedUrl}/api/mcp/selection`);
+      const res = await authFetch(`${cachedUrl}/api/mcp/selection`);
       if (res.ok)
         return (await res.json()) as { selectedIds: string[]; activePageId: string | null };
     } catch {
@@ -460,7 +470,7 @@ export async function fetchLiveSelection(): Promise<{
   _cachedSyncUrl = sync.url;
   _cachedSyncUrlTime = Date.now();
   try {
-    const res = await fetch(`${sync.url}/api/mcp/selection`);
+    const res = await authFetch(`${sync.url}/api/mcp/selection`);
     if (!res.ok) return { selectedIds: [], activePageId: null };
     return (await res.json()) as { selectedIds: string[]; activePageId: string | null };
   } catch {

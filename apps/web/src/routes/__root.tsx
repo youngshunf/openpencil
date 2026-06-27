@@ -17,7 +17,7 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'OpenPencil',
+        title: '唤星 · 矢量设计',
       },
     ],
     links: [

@@ -11,6 +11,9 @@ import { resolve } from 'node:path';
 import { vitePluginSkills } from '../../packages/pen-ai-skills/vite-plugin-skills';
 
 const isElectronBuild = process.env.BUILD_TARGET === 'electron';
+// 唤星收编：独立的 node-server 构建目标，不再绑死 electron 语义。
+// `BUILD_TARGET=node-server`（唤星本地 sidecar，daemon 反代/spawn）或 `=electron`（上游桌面端）均产 node-server preset。
+const isNodeServer = isElectronBuild || process.env.BUILD_TARGET === 'node-server';
 
 // Copy CanvasKit WASM files to public directory for runtime loading
 function copyCanvasKitWasm() {

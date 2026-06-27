@@ -124,15 +124,34 @@ function startHttpServer(port: number): void {
   // Per-session transport map: each client gets its own Server + Transport
   const sessions = new Map<string, { transport: StreamableHTTPServerTransport; server: Server }>();
 
+  // 唤星本地 sidecar 加固：默认仅绑 loopback；配了 OPENPENCIL_SIDECAR_TOKEN 则强制 Bearer 鉴权
+  // （daemon 生产环境注入 token；本地裸跑不配 → 放行，保持 dev/spike 友好）。
+  const SIDECAR_TOKEN = process.env.OPENPENCIL_SIDECAR_TOKEN;
+  const BIND_HOST = process.env.OPENPENCIL_BIND_HOST || '127.0.0.1';
+  const isLocalOrigin = (origin?: string): boolean =>
+    !!origin && /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin);
+
   const httpServer = createServer(async (req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    // 唤星加固：CORS 收敛到 loopback origin（拒绝任意网页跨域驱动本机画布）。
+    const origin = req.headers.origin as string | undefined;
+    if (isLocalOrigin(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin!);
+    }
+    res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, mcp-session-id');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, mcp-session-id, Authorization');
     res.setHeader('Access-Control-Expose-Headers', 'mcp-session-id');
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
       res.end();
+      return;
+    }
+
+    // 唤星加固：token 闸（配置了才强制；daemon broker 调用时附带 Bearer）。
+    if (SIDECAR_TOKEN && req.headers['authorization'] !== `Bearer ${SIDECAR_TOKEN}`) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'unauthorized: missing or invalid sidecar token' }));
       return;
     }
 
@@ -200,8 +219,8 @@ function startHttpServer(port: number): void {
     );
   });
 
-  httpServer.listen(port, '0.0.0.0', () => {
-    console.error(`OpenPencil MCP server listening on http://0.0.0.0:${port}/mcp`);
+  httpServer.listen(port, BIND_HOST, () => {
+    console.error(`OpenPencil MCP server listening on http://${BIND_HOST}:${port}/mcp`);
   });
 }
 
