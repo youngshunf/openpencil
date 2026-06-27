@@ -67,7 +67,7 @@ const config = defineConfig({
       },
       serverDir: './server',
       output: { dir: '../../out/web' },
-      ...(isElectronBuild ? { preset: 'node-server' } : {}),
+      ...(isNodeServer ? { preset: 'node-server' } : {}),
     }),
     // this is the plugin that enables path aliases
     viteTsConfigPaths({

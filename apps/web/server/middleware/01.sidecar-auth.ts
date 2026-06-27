@@ -1,3 +1,6 @@
+// OpenPencil 约定：server handler 显式从 'h3' 导入（不靠 nitro auto-import；node-server 产物运行时无全局注入）。
+import { defineEventHandler, getRequestHeader, getRequestURL, setResponseStatus } from 'h3';
+
 // 唤星本地 sidecar 加固：web app `/api/mcp/*`（live-canvas 桥）受 sidecar token 保护。
 //
 // - 配了 OPENPENCIL_SIDECAR_TOKEN（daemon 生产注入两进程 env）→ 强制校验 `Authorization: Bearer <token>`。
