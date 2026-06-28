@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { getSkiaEngineRef } from '@/canvas/skia-engine-ref';
 import { useCanvasStore } from '@/stores/canvas-store';
 import { useDocumentStore, getActivePageChildren, getAllChildren } from '@/stores/document-store';
+import { saveBytesWithPicker } from '@/utils/save-bytes';
 
 const SCALE_OPTIONS = [
   { value: '1', label: '1x' },
@@ -41,7 +42,7 @@ export default function ExportSection({ nodeId, nodeName }: ExportSectionProps) 
   const [format, setFormat] = useState<ExportFormat>('png');
   const [exporting, setExporting] = useState(false);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const engine = getSkiaEngineRef();
     if (!engine) {
       console.error('[ExportSection] SkiaEngine not available');
@@ -100,58 +101,70 @@ export default function ExportSection({ nodeId, nodeName }: ExportSectionProps) 
 
     setExporting(true);
     try {
-      const canvas = surface.getCanvas();
-      // JPEG has no alpha — fill with white; PNG/WEBP preserve transparency.
-      canvas.clear(format === 'jpeg' ? ck.WHITE : ck.TRANSPARENT);
+      // Render + encode into a plain Uint8Array, then free the WASM-backed
+      // surface/image BEFORE the (possibly long) native save dialog runs.
+      const payload = ((): {
+        bytes: Uint8Array;
+        filename: string;
+        mime: string;
+        ext: string;
+      } | null => {
+        try {
+          const canvas = surface.getCanvas();
+          // JPEG has no alpha — fill with white; PNG/WEBP preserve transparency.
+          canvas.clear(format === 'jpeg' ? ck.WHITE : ck.TRANSPARENT);
 
-      canvas.save();
-      canvas.scale(multiplier, multiplier);
-      canvas.translate(-originX, -originY);
-      for (const rn of subtreeRNs) {
-        engine.renderer.drawNode(canvas, rn);
-      }
-      canvas.restore();
-      surface.flush();
+          canvas.save();
+          canvas.scale(multiplier, multiplier);
+          canvas.translate(-originX, -originY);
+          for (const rn of subtreeRNs) {
+            engine.renderer.drawNode(canvas, rn);
+          }
+          canvas.restore();
+          surface.flush();
 
-      const img = surface.makeImageSnapshot();
-      try {
-        const fmtEnum =
-          format === 'jpeg'
-            ? ck.ImageFormat.JPEG
-            : format === 'webp'
-              ? ck.ImageFormat.WEBP
-              : ck.ImageFormat.PNG;
-        const quality = format === 'png' ? 100 : 92;
-        const bytes = img.encodeToBytes(fmtEnum, quality);
-        if (!bytes) {
-          console.error('[ExportSection] Failed to encode image');
-          return;
+          const img = surface.makeImageSnapshot();
+          try {
+            const fmtEnum =
+              format === 'jpeg'
+                ? ck.ImageFormat.JPEG
+                : format === 'webp'
+                  ? ck.ImageFormat.WEBP
+                  : ck.ImageFormat.PNG;
+            const quality = format === 'png' ? 100 : 92;
+            const bytes = img.encodeToBytes(fmtEnum, quality);
+            if (!bytes) {
+              console.error('[ExportSection] Failed to encode image');
+              return null;
+            }
+
+            const mime =
+              format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
+            const ext = format === 'jpeg' ? 'jpg' : format;
+            // Preserve CJK and word chars in filename; replace other punctuation with _
+            const safeName = (nodeName || 'layer').replace(/[^\p{L}\p{N}_-]+/gu, '_') || 'layer';
+            // Copy out of WASM memory so the bytes survive img/surface disposal.
+            const copy = new Uint8Array(bytes.length);
+            copy.set(bytes);
+            return { bytes: copy, filename: `${safeName}.${ext}`, mime, ext };
+          } finally {
+            img.delete();
+          }
+        } finally {
+          surface.delete();
         }
+      })();
 
-        const mime =
-          format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
-        const ext = format === 'jpeg' ? 'jpg' : format;
-        // Preserve CJK and word chars in filename; replace other punctuation with _
-        const safeName = (nodeName || 'layer').replace(/[^\p{L}\p{N}_-]+/gu, '_') || 'layer';
-        const filename = `${safeName}.${ext}`;
+      if (!payload) return;
 
-        // Copy into a plain ArrayBuffer so the Blob doesn't retain WASM memory
-        const copy = new Uint8Array(bytes.length);
-        copy.set(bytes);
-        const blob = new Blob([copy], { type: mime });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-      } finally {
-        img.delete();
-      }
+      // Native "Save As" on desktop (WKWebView), File System Access in browsers,
+      // blob download as a last resort. A bare <a download> is silently dropped
+      // inside the Tauri WKWebView — hence the picker indirection.
+      const filterName = payload.ext === 'jpg' ? 'JPEG 图片' : `${payload.ext.toUpperCase()} 图片`;
+      await saveBytesWithPicker(payload.bytes, payload.filename, payload.mime, [
+        { name: filterName, extensions: [payload.ext] },
+      ]);
     } finally {
-      surface.delete();
       setExporting(false);
     }
   };
@@ -189,7 +202,7 @@ export default function ExportSection({ nodeId, nodeName }: ExportSectionProps) 
         variant="outline"
         size="sm"
         className="w-full text-xs"
-        onClick={handleExport}
+        onClick={() => void handleExport()}
         disabled={exporting}
       >
         {t('export.exportLayer')}
