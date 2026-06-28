@@ -1,27 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { appStorage, initAppStorage } from '@/utils/app-storage';
-import type { ComponentType, SVGProps } from 'react';
-import {
-  PanelLeft,
-  Folder,
-  ChevronDown,
-  Sun,
-  Moon,
-  Maximize,
-  Minimize,
-  Blocks,
-} from 'lucide-react';
+import { PanelLeft, Folder, ChevronDown, Sun, Moon, Maximize, Minimize } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import ClaudeLogo from '@/components/icons/claude-logo';
-import OpenAILogo from '@/components/icons/openai-logo';
-import OpenCodeLogo from '@/components/icons/opencode-logo';
-import CopilotLogo from '@/components/icons/copilot-logo';
-import GeminiLogo from '@/components/icons/gemini-logo';
 import FigmaLogo from '@/components/icons/figma-logo';
 import FileMenu from '@/components/shared/file-menu';
 import LanguageSelector from '@/components/shared/language-selector';
 import { GitButton } from '@/components/editor/git-button';
-import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useCanvasStore } from '@/stores/canvas-store';
@@ -36,8 +20,6 @@ import { syncCanvasPositionsToStore } from '@/canvas/skia-engine-ref';
 import { zoomToFitContent } from '@/canvas/skia-engine-ref';
 import { parseAndPrepareImportedDocument } from '@/utils/import-pen-document';
 import { addRecentFile } from '@/utils/recent-files';
-import { useAgentSettingsStore } from '@/stores/agent-settings-store';
-import type { AIProviderType } from '@/types/agent-settings';
 import type { PenDocument } from '@/types/pen';
 
 /**
@@ -70,80 +52,6 @@ function cssToHex(raw: string): string | null {
   } catch {
     return null;
   }
-}
-
-const PROVIDER_ICONS: Record<AIProviderType, ComponentType<SVGProps<SVGSVGElement>>> = {
-  anthropic: ClaudeLogo,
-  openai: OpenAILogo,
-  opencode: OpenCodeLogo,
-  copilot: CopilotLogo,
-  gemini: GeminiLogo,
-};
-
-const PROVIDER_ORDER: AIProviderType[] = ['anthropic', 'openai', 'opencode', 'copilot', 'gemini'];
-
-function AgentStatusButton() {
-  const { t } = useTranslation();
-  const providers = useAgentSettingsStore((s) => s.providers);
-  const mcpIntegrations = useAgentSettingsStore((s) => s.mcpIntegrations);
-  const connectedTypes = PROVIDER_ORDER.filter((tp) => providers[tp].isConnected);
-  const agentCount = connectedTypes.length;
-  const mcpCount = mcpIntegrations.filter((m) => m.enabled).length;
-  const hasAny = agentCount > 0 || mcpCount > 0;
-
-  const tooltipParts: string[] = [];
-  if (agentCount > 0) tooltipParts.push(`${agentCount} agent${agentCount !== 1 ? 's' : ''}`);
-  if (mcpCount > 0) tooltipParts.push(`${mcpCount} MCP`);
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => useAgentSettingsStore.getState().setDialogOpen(true)}
-          className="h-7 px-2 text-muted-foreground hover:text-foreground"
-        >
-          {hasAny ? (
-            <div className="flex items-center gap-1.5">
-              {agentCount > 0 && (
-                <div className="flex items-center -space-x-1.5">
-                  {connectedTypes.map((type) => {
-                    const Icon = PROVIDER_ICONS[type];
-                    return (
-                      <div
-                        key={type}
-                        className="w-5 h-5 rounded-md bg-foreground/10 flex items-center justify-center ring-1 ring-card"
-                      >
-                        <Icon className="w-3 h-3" />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {agentCount === 0 && <Blocks size={14} strokeWidth={1.5} />}
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-              <span className="text-[11px] text-muted-foreground hidden sm:inline">
-                {tooltipParts.join(' · ')}
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <Blocks size={14} strokeWidth={1.5} />
-              <span className={cn('text-[11px]', 'hidden sm:inline')}>
-                {t('topbar.agentsAndMcp')}
-              </span>
-            </div>
-          )}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">
-        {hasAny
-          ? tooltipParts.join(' · ') + ' ' + t('topbar.connected')
-          : t('topbar.setupAgentsMcp')}
-      </TooltipContent>
-    </Tooltip>
-  );
 }
 
 export default function TopBar() {
@@ -440,10 +348,6 @@ export default function TopBar() {
 
       {/* Right section */}
       <div className="flex items-center gap-0.5 app-region-no-drag electron-win-controls-pad">
-        <AgentStatusButton />
-
-        <div className="w-px h-3.5 bg-border/60 mx-1" />
-
         <LanguageSelector />
 
         <Tooltip>
