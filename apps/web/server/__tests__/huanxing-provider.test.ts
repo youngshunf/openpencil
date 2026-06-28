@@ -4,7 +4,7 @@ import {
   isHuanxingDefaultRequest,
   readHuanxingDefaultCredentials,
   requireHuanxingDefaultCredentials,
-} from './huanxing-provider';
+} from '../api/ai/huanxing-provider';
 
 const ENV_KEYS = [
   'OPENPENCIL_HUANXING_API_KEY',
