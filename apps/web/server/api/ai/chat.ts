@@ -19,6 +19,11 @@ import {
   isHuanxingDefaultRequest,
   requireHuanxingDefaultCredentials,
 } from './huanxing-provider';
+import {
+  streamOpenAICompatCompletion,
+  streamAnthropicCompletion,
+  type BuiltinChatMessage,
+} from './builtin-stream';
 // SENSITIVE_LOG_PATTERN + readDebugTail are now canonical in @zseven-w/pen-mcp.
 // Re-export here to keep existing consumers (tests, other modules) working.
 import { SENSITIVE_LOG_PATTERN, readDebugTail } from '@zseven-w/pen-mcp';
@@ -980,39 +985,45 @@ function streamViaCopilot(body: ChatBody, model?: string) {
 }
 
 /**
- * Stream via builtin provider — direct API key, no CLI tool needed.
- * Uses Zig NAPI addon (agent-native) with Anthropic or OpenAI-compatible providers.
+ * Stream via the built-in provider using direct HTTP SSE — no native addon.
+ *
+ * The env-backed 唤星 default provider and BYO openai-compat keys stream from an
+ * OpenAI-compatible `/chat/completions`; BYO anthropic keys stream from the
+ * Anthropic Messages API. This replaces the unbuilt `@zseven-w/agent-native`
+ * Zig addon so the editor's code export ("代码" tab) and any direct built-in
+ * chat work. The frontend never holds the key — for the 唤星 default it is read
+ * from this process's env (走主人积分); zero fake: errors surface as an SSE
+ * `error` event rather than silent degradation.
  */
 function streamViaBuiltin(body: ChatBody) {
+  const upstreamAbort = new AbortController();
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
-      const BUILTIN_EVENT_IDLE_TIMEOUT_MS = 45_000;
+      let closed = false;
+      const safeEnqueue = (payload: Record<string, unknown>) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+        } catch {
+          closed = true;
+        }
+      };
       const pingTimer = startSSEKeepAlive(() => {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ type: 'ping', content: '' })}\n\n`),
-        );
+        safeEnqueue({ type: 'ping', content: '' });
       }, KEEPALIVE_INTERVAL_MS);
 
       try {
-        const {
-          createAnthropicProvider,
-          createOpenAICompatProvider,
-          createQueryEngine,
-          seedMessages,
-          submitMessage,
-          nextEvent,
-          abortEngine,
-          destroyIterator,
-          destroyQueryEngine,
-          destroyProvider,
-        } = await import('@zseven-w/agent-native');
-
         const rawModel = body.model?.trim() ?? '';
-        // Model string may be "builtin:<providerId>:<actualModel>" — extract the actual model name
+        // Model string may be "builtin:<providerId>:<actualModel>" — extract the actual model name.
         const model = rawModel.startsWith('builtin:')
           ? rawModel.split(':').slice(2).join(':')
           : rawModel;
+
+        // Full history (system is passed separately); last entry is the latest user turn.
+        const messages: BuiltinChatMessage[] = body.messages
+          .filter((m) => typeof m.content === 'string')
+          .map((m) => ({ role: m.role, content: m.content }));
 
         // 唤星 env-backed default provider: ignore client-sent apiKey/baseURL, use env credentials
         // (走主人积分；真实 key 只在本进程 env 里，前端从未持有)。Always OpenAI-compatible (new-api).
@@ -1021,149 +1032,63 @@ function streamViaBuiltin(body: ChatBody) {
           builtinProviderId: body.builtinProviderId,
         });
 
-        let builtinProvider;
+        let deltas: AsyncGenerator<{ type: 'text' | 'thinking'; content: string }>;
         if (useHuanxing) {
           const cred = requireHuanxingDefaultCredentials(model);
-          builtinProvider = createOpenAICompatProvider(cred.apiKey, cred.baseURL, cred.model);
+          deltas = streamOpenAICompatCompletion({
+            apiKey: cred.apiKey,
+            baseURL: cred.baseURL,
+            model: cred.model,
+            system: body.system,
+            messages,
+            signal: upstreamAbort.signal,
+          });
         } else {
           const apiKey = body.builtinApiKey;
           if (!apiKey || !model) throw new Error('Builtin provider requires apiKey and model');
           const normalizedBuiltinBaseURL = normalizeOptionalBaseURL(body.builtinBaseURL);
-          builtinProvider =
+          deltas =
             body.builtinType === 'anthropic'
-              ? createAnthropicProvider(apiKey, model, normalizedBuiltinBaseURL)
-              : createOpenAICompatProvider(
+              ? streamAnthropicCompletion({
                   apiKey,
-                  requireOpenAICompatBaseURL(normalizedBuiltinBaseURL),
+                  baseURL: normalizedBuiltinBaseURL,
                   model,
-                );
+                  system: body.system,
+                  messages,
+                  signal: upstreamAbort.signal,
+                })
+              : streamOpenAICompatCompletion({
+                  apiKey,
+                  baseURL: requireOpenAICompatBaseURL(normalizedBuiltinBaseURL),
+                  model,
+                  system: body.system,
+                  messages,
+                  signal: upstreamAbort.signal,
+                });
         }
 
-        // Pure streaming — no tools, maxTurns=1 prevents agentic looping
-        const builtinEngine = createQueryEngine({
-          provider: builtinProvider,
-          systemPrompt: body.system,
-          maxTurns: 1,
-          maxOutputTokens: 16384,
-          cwd: process.cwd(),
-        });
-
-        // Seed prior conversation history for multi-turn context
-        const priorMsgs = body.messages
-          .slice(0, -1)
-          .filter(
-            (m: any) =>
-              (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string',
-          );
-        if (priorMsgs.length > 0) {
-          seedMessages(builtinEngine, JSON.stringify(priorMsgs));
+        for await (const delta of deltas) {
+          safeEnqueue(delta);
         }
-
-        const lastMsg = body.messages[body.messages.length - 1]?.content ?? '';
-        const builtinIter = await submitMessage(builtinEngine, lastMsg);
-
-        // Abort engine if no events arrive within 60s (provider sent 200 but no SSE data)
-        let gotFirstEvent = false;
-        const firstEventTimer = setTimeout(() => {
-          if (!gotFirstEvent) {
-            console.warn('[builtin] No SSE events received within 60s — aborting engine');
-            abortEngine(builtinEngine);
-          }
-        }, 60_000);
-
-        try {
-          let raw: string | null;
-          while (
-            (raw = await waitForBuiltinEvent(
-              nextEvent,
-              builtinIter,
-              () => abortEngine(builtinEngine),
-              BUILTIN_EVENT_IDLE_TIMEOUT_MS,
-            )) !== null
-          ) {
-            if (!gotFirstEvent) {
-              gotFirstEvent = true;
-              clearTimeout(firstEventTimer);
-            }
-            const evt = JSON.parse(raw);
-            // Zig events are tagged unions: {"stream_event":{...}} or {"result":{...}}
-            const se = evt.stream_event;
-            if (se?.type === 'text_delta' && se.text) {
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ type: 'text', content: se.text })}\n\n`),
-              );
-            } else if (se?.type === 'thinking_delta' && se.text) {
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({ type: 'thinking', content: se.text })}\n\n`,
-                ),
-              );
-            } else if (evt.result?.is_error) {
-              // Zig attaches the provider's last_error string in result.errors[0]
-              // (e.g. "Content blocked by provider safety filter (HTTP 451)...").
-              // Surface that instead of the opaque subtype so users see the
-              // actual reason — "content blocked" vs. "rate limit" vs. "auth"
-              // is information they can act on.
-              const detail =
-                (Array.isArray(evt.result.errors) && evt.result.errors[0]) ||
-                evt.result.subtype ||
-                'unknown';
-              const errMsg = `Provider error: ${detail}`;
-              console.error('[builtin]', errMsg);
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ type: 'error', content: errMsg })}\n\n`),
-              );
-            }
-          }
-
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: 'done', content: '' })}\n\n`),
-          );
-        } finally {
-          clearTimeout(firstEventTimer);
-          destroyIterator(builtinIter);
-          destroyQueryEngine(builtinEngine);
-          destroyProvider(builtinProvider);
-        }
+        safeEnqueue({ type: 'done', content: '' });
       } catch (error) {
         const content = formatFetchError(error);
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ type: 'error', content })}\n\n`),
-        );
+        console.error('[builtin]', content);
+        safeEnqueue({ type: 'error', content });
       } finally {
         clearInterval(pingTimer);
-        controller.close();
+        closed = true;
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
       }
+    },
+    cancel() {
+      upstreamAbort.abort();
     },
   });
 
   return new Response(stream);
-}
-
-async function waitForBuiltinEvent<TIterator>(
-  nextEventFn: (iter: TIterator) => Promise<string | null>,
-  iter: TIterator,
-  onTimeout: () => void,
-  timeoutMs: number,
-): Promise<string | null> {
-  return await new Promise<string | null>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      try {
-        onTimeout();
-      } catch {
-        /* ignore */
-      }
-      reject(new Error('Builtin provider stalled without output. Please retry.'));
-    }, timeoutMs);
-
-    nextEventFn(iter)
-      .then((value) => {
-        clearTimeout(timer);
-        resolve(value);
-      })
-      .catch((err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-  });
 }
