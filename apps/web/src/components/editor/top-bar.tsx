@@ -38,6 +38,24 @@ import { parseAndPrepareImportedDocument } from '@/utils/import-pen-document';
 import { addRecentFile } from '@/utils/recent-files';
 import { useAgentSettingsStore } from '@/stores/agent-settings-store';
 import type { AIProviderType } from '@/types/agent-settings';
+import type { PenDocument } from '@/types/pen';
+
+/**
+ * Derive a human title for the editor top bar: the project name, not the `.op` file path.
+ *
+ * Priority: document `name` (the daemon stamps it = 唤星 project name when creating the `.op`,
+ * survives pen-mcp saves since normalize preserves top-level fields) → first top-level frame
+ * name (the design's own title, set when the agent draws) → '' (caller falls back to fileName).
+ * Returned as a plain string so the Zustand selector only re-renders the title on actual change.
+ */
+function deriveProjectTitle(doc: PenDocument): string {
+  const docName = doc.name?.trim();
+  if (docName) return docName;
+  const firstNode =
+    (doc.pages && doc.pages.length > 0 ? doc.pages[0]?.children?.[0] : undefined) ??
+    doc.children?.[0];
+  return firstNode?.name?.trim() ?? '';
+}
 
 /** Convert a computed CSS color value (oklch/rgb/etc.) to #rrggbb via an offscreen canvas. */
 function cssToHex(raw: string): string | null {
@@ -133,6 +151,7 @@ export default function TopBar() {
   const toggleLayerPanel = useCanvasStore((s) => s.toggleLayerPanel);
   const layerPanelOpen = useCanvasStore((s) => s.layerPanelOpen);
   const fileName = useDocumentStore((s) => s.fileName);
+  const projectTitle = useDocumentStore((s) => deriveProjectTitle(s.document));
   const isDirty = useDocumentStore((s) => s.isDirty);
 
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -331,7 +350,8 @@ export default function TopBar() {
     }
   }, [t, handleSaveWithFeedback]);
 
-  const displayName = fileName ?? t('common.untitled');
+  // 顶栏显示项目名（document.name → 根帧名），无则回落文件名，仍无则「未命名」。
+  const displayName = projectTitle || fileName || t('common.untitled');
 
   return (
     <div className="h-10 bg-card border-b border-border flex items-center px-2 shrink-0 select-none app-region-drag">
