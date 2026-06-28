@@ -52,6 +52,12 @@ export interface BuiltinProviderConfig {
    * requests are routed via `useHuanxingDefault`. Read-only / non-deletable in the UI.
    */
   envBacked?: boolean;
+  /**
+   * Selectable models beyond the primary `model` (e.g. the 唤星 platform default failover
+   * chain). The model dropdown lists `[model, ...models]` deduped so the user can pick any
+   * model in the platform default config. Empty/absent ⇒ only the primary model is offered.
+   */
+  models?: string[];
 }
 
 /** Reserved id for the env-backed 唤星 (Huanxing) default provider. */
@@ -113,6 +119,7 @@ interface AgentSettingsState extends PersistedState {
     available: boolean;
     label: string;
     model: string;
+    fallbackModels?: string[];
   }) => void;
   addAcpAgent: (config: Omit<AcpAgentConfig, 'id'>) => string;
   updateAcpAgent: (id: string, updates: Partial<AcpAgentConfig>) => void;
@@ -302,7 +309,7 @@ export const useAgentSettingsStore = create<AgentSettingsState>((set, get) => ({
       builtinProviders: s.builtinProviders.filter((p) => p.id !== id),
     })),
 
-  syncHuanxingDefaultProvider: ({ available, label, model }) =>
+  syncHuanxingDefaultProvider: ({ available, label, model, fallbackModels }) =>
     set((s) => {
       // Always drop any existing 唤星 entry first (rebuild from host runtime each startup).
       const others = s.builtinProviders.filter((p) => p.id !== HUANXING_PROVIDER_ID);
@@ -310,6 +317,11 @@ export const useAgentSettingsStore = create<AgentSettingsState>((set, get) => ({
         // Only emit a new array when something actually changed (avoid render churn).
         return others.length === s.builtinProviders.length ? {} : { builtinProviders: others };
       }
+      // Failover chain from the platform default config (PDC `model_fallback_pool`): the model
+      // dropdown lists [main, ...fallback] — primary excluded here, blanks + dupes dropped.
+      const failoverModels = (fallbackModels ?? [])
+        .map((m) => (typeof m === 'string' ? m.trim() : ''))
+        .filter((m, i, arr) => m.length > 0 && m !== model && arr.indexOf(m) === i);
       // env-backed: empty apiKey/baseURL (the daemon holds the real credentials), enabled.
       const huanxing: BuiltinProviderConfig = {
         id: HUANXING_PROVIDER_ID,
@@ -318,6 +330,7 @@ export const useAgentSettingsStore = create<AgentSettingsState>((set, get) => ({
         apiKey: '',
         baseURL: '',
         model,
+        models: failoverModels,
         enabled: true,
         envBacked: true,
       };

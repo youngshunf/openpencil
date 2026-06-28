@@ -36,6 +36,30 @@ describe('syncHuanxingDefaultProvider', () => {
     expect(huanxing?.type).toBe('openai-compat');
   });
 
+  it('stores the failover chain as models, excluding the primary + blanks/dupes', () => {
+    useAgentSettingsStore.getState().syncHuanxingDefaultProvider({
+      available: true,
+      label: '唤星',
+      model: 'agnes-2.0-flash',
+      fallbackModels: ['agnes-2.0-flash', 'deepseek-v4-flash', '  ', 'qwen3.7-plus', 'deepseek-v4-flash'],
+    });
+    const huanxing = useAgentSettingsStore
+      .getState()
+      .builtinProviders.find((p) => p.id === HUANXING_PROVIDER_ID);
+    // primary excluded, blank dropped, dupe collapsed once (store trims + dedupes + drops model).
+    expect(huanxing?.models).toEqual(['deepseek-v4-flash', 'qwen3.7-plus']);
+  });
+
+  it('defaults models to empty when no failover chain is provided', () => {
+    useAgentSettingsStore
+      .getState()
+      .syncHuanxingDefaultProvider({ available: true, label: '唤星', model: 'm' });
+    const huanxing = useAgentSettingsStore
+      .getState()
+      .builtinProviders.find((p) => p.id === HUANXING_PROVIDER_ID);
+    expect(huanxing?.models).toEqual([]);
+  });
+
   it('falls back to 唤星 label when none provided', () => {
     useAgentSettingsStore
       .getState()

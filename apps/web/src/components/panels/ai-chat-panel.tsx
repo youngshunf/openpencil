@@ -139,31 +139,40 @@ export default function AIChatPanel() {
       (p) => providers[p].isConnected && (providers[p].models?.length ?? 0) > 0,
     );
 
-    const groups: ModelGroup[] = connectedProviders.map((p) => ({
+    const cliGroups: ModelGroup[] = connectedProviders.map((p) => ({
       provider: p,
       providerName: providerNames[p],
       models: providers[p].models,
     }));
 
+    // env-backed 唤星 default provider leads so its main model is the default selection (走平台
+    // 默认配置，而非用户自连的 CLI provider); other built-in (BYO key) providers follow the CLI ones.
+    const huanxingGroups: ModelGroup[] = [];
+    const otherBuiltinGroups: ModelGroup[] = [];
     for (const bp of builtinProviders) {
       // env-backed providers (e.g. 唤星) carry no client-side apiKey — the daemon holds it.
       if (!bp.enabled || (!bp.apiKey && !bp.envBacked)) continue;
       const providerType: AIProviderType = bp.type === 'anthropic' ? 'anthropic' : 'openai';
-      groups.push({
+      // Dropdown lists [main, ...failover] deduped — primary first, blanks/dupes dropped.
+      const modelNames = [bp.model, ...(bp.models ?? [])]
+        .map((m) => m.trim())
+        .filter((m, i, arr) => m.length > 0 && arr.indexOf(m) === i);
+      const group: ModelGroup = {
         provider: providerType,
         providerName:
           bp.displayName || (bp.type === 'anthropic' ? 'Anthropic (API Key)' : bp.displayName),
-        models: [
-          {
-            value: `builtin:${bp.id}:${bp.model}`,
-            displayName: bp.model,
-            description: t('builtin.viaApiKey', { name: bp.displayName }),
-            provider: providerType,
-            builtinProviderId: bp.id,
-          },
-        ],
-      });
+        models: modelNames.map((mn) => ({
+          value: `builtin:${bp.id}:${mn}`,
+          displayName: mn,
+          description: t('builtin.viaApiKey', { name: bp.displayName }),
+          provider: providerType,
+          builtinProviderId: bp.id,
+        })),
+      };
+      (bp.envBacked ? huanxingGroups : otherBuiltinGroups).push(group);
     }
+
+    const groups: ModelGroup[] = [...huanxingGroups, ...cliGroups, ...otherBuiltinGroups];
 
     // ACP agents
     for (const agent of acpAgents) {

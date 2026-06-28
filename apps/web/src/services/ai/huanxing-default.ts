@@ -5,6 +5,8 @@ export interface HuanxingDefaultInfo {
   available: boolean;
   label: string;
   model: string;
+  /** Platform default failover chain (primary excluded). Editor lists [main, ...fallback]. */
+  fallbackModels: string[];
 }
 
 /**
@@ -17,15 +19,18 @@ export interface HuanxingDefaultInfo {
 export async function fetchHuanxingDefault(): Promise<HuanxingDefaultInfo> {
   try {
     const res = await fetch('/api/ai/huanxing-default');
-    if (!res.ok) return { available: false, label: '', model: '' };
+    if (!res.ok) return { available: false, label: '', model: '', fallbackModels: [] };
     const data = (await res.json()) as Partial<HuanxingDefaultInfo>;
     return {
       available: data.available === true,
       label: typeof data.label === 'string' ? data.label : '',
       model: typeof data.model === 'string' ? data.model : '',
+      fallbackModels: Array.isArray(data.fallbackModels)
+        ? data.fallbackModels.filter((m): m is string => typeof m === 'string' && m.length > 0)
+        : [],
     };
   } catch {
-    return { available: false, label: '', model: '' };
+    return { available: false, label: '', model: '', fallbackModels: [] };
   }
 }
 
