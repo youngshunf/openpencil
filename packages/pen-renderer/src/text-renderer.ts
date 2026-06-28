@@ -435,6 +435,13 @@ export class SkiaTextRenderer {
     h: number,
     opacity: number,
   ) {
+    // The bitmap text path rasterizes via a Canvas 2D context (`document`),
+    // which does not exist in headless/Node renders. Skip gracefully there so a
+    // system-font or not-yet-loaded text node degrades to "no text" instead of
+    // throwing and aborting the whole render. Browsers always have `document`,
+    // and the vector (Paragraph) path covers loaded/bundled fonts regardless.
+    if (typeof document === 'undefined') return;
+
     const ck = this.ck;
     const tNode = node as TextNode;
     const content =

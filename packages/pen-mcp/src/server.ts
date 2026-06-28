@@ -45,6 +45,11 @@ import {
   DEBUG_TOOL_NAMES,
   handleDebugToolCall,
 } from './routes/debug-routes';
+import {
+  RENDER_TOOL_DEFINITIONS,
+  RENDER_TOOL_NAMES,
+  handleRenderToolCall,
+} from './routes/render-routes';
 import { installIconHooks } from './icons';
 
 const pkg = { name: '@zseven-w/pen-mcp', version: '0.6.0' };
@@ -72,6 +77,7 @@ const TOOL_DEFINITIONS = [
   ...CODEGEN_TOOL_DEFINITIONS,
   ...STYLE_GUIDE_TOOL_DEFINITIONS,
   ...STYLE_OPS_TOOL_DEFINITIONS,
+  ...RENDER_TOOL_DEFINITIONS,
   ...(DEBUG_ENABLED ? DEBUG_TOOL_DEFINITIONS : []),
 ];
 
@@ -90,6 +96,7 @@ async function handleToolCall(
   if (CODEGEN_TOOL_NAMES.has(name)) return handleCodegenToolCall(name, a);
   if (STYLE_GUIDE_TOOL_NAMES.has(name)) return handleStyleGuideToolCall(name, a);
   if (STYLE_OPS_TOOL_NAMES.has(name)) return handleStyleOpsToolCall(name, a);
+  if (RENDER_TOOL_NAMES.has(name)) return handleRenderToolCall(name, a);
   if (DEBUG_ENABLED && DEBUG_TOOL_NAMES.has(name)) return handleDebugToolCall(name, a);
   throw new Error(`Unknown tool: ${name}`);
 }

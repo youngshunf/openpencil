@@ -82,6 +82,60 @@ export const BUNDLED_FONT_FAMILIES = [
   'Source Sans 3',
 ];
 
+/** Lowercase bundled key → proper display name used when registering the typeface. */
+const BUNDLED_FONT_DISPLAY: Record<string, string> = {
+  inter: 'Inter',
+  poppins: 'Poppins',
+  roboto: 'Roboto',
+  montserrat: 'Montserrat',
+  'open sans': 'Open Sans',
+  lato: 'Lato',
+  raleway: 'Raleway',
+  'dm sans': 'DM Sans',
+  'playfair display': 'Playfair Display',
+  nunito: 'Nunito',
+  'source sans 3': 'Source Sans 3',
+  'source sans pro': 'Source Sans Pro',
+  'noto sans sc': 'Noto Sans SC',
+};
+
+/** One bundled woff2 file plus the family name it should register under. */
+export interface BundledFontFile {
+  /** woff2 file name, relative to the font base path (e.g. `inter-400.woff2`). */
+  file: string;
+  /** Family name to register the typeface under (matches the browser loader). */
+  regName: string;
+}
+
+/**
+ * Pure listing of bundled font files and the family names they register under.
+ *
+ * Mirrors the browser font loader's `-ext-` → "<family> Ext" rule, so a headless
+ * (Node) caller can read the woff2 bytes from disk and feed them to
+ * {@link SkiaFontManager.registerFont} to produce identical vector text — without
+ * the browser-only `fetch('/fonts/...')` path that does not work in Node.
+ *
+ * @param families Optional subset of display names (case-insensitive). Omit for all.
+ */
+export function listBundledFontFiles(families?: string[]): BundledFontFile[] {
+  const wanted = families ? new Set(families.map((f) => f.toLowerCase())) : null;
+  const out: BundledFontFile[] = [];
+  const seen = new Set<string>();
+  for (const [key, files] of Object.entries(BUNDLED_FONTS)) {
+    if (wanted && !wanted.has(key)) continue;
+    const family = BUNDLED_FONT_DISPLAY[key] ?? key;
+    for (const file of files) {
+      const regName = file.includes('-ext-') ? `${family} Ext` : family;
+      // Dedupe: e.g. "source sans 3" and "source sans pro" share files.
+      const dedupeKey = `${regName}::${file}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      out.push({ file, regName });
+    }
+  }
+  return out;
+}
+
 /**
  * Manages font loading for CanvasKit's Paragraph API (vector text rendering).
  *

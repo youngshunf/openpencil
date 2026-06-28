@@ -24,10 +24,15 @@ export type { RenderNode, ViewportState, PenRendererOptions, IconLookupFn } from
 // ---- Low-level utilities (for apps/web editor re-use) ----
 export { SkiaNodeRenderer } from './node-renderer.js';
 export { SkiaTextRenderer } from './text-renderer.js';
-export { SkiaFontManager, BUNDLED_FONT_FAMILIES } from './font-manager.js';
+export {
+  SkiaFontManager,
+  BUNDLED_FONT_FAMILIES,
+  listBundledFontFiles,
+} from './font-manager.js';
 export type {
   FontManagerOptions,
   NativeFontPermission as LocalFontPermission,
+  BundledFontFile,
 } from './font-manager.js';
 export { SkiaImageLoader } from './image-loader.js';
 export { SpatialIndex } from './spatial-index.js';
@@ -62,3 +67,11 @@ export { sanitizeSvgPath, hasInvalidNumbers, tryManualPathParse } from './path-u
 // ---- Thumbnail helper (Phase 7c) ----
 export { renderNodeThumbnail } from './render-node-thumbnail.js';
 export type { ThumbnailContext } from './render-node-thumbnail.js';
+
+// ---- Headless full-document PNG render (no browser APIs) ----
+export { renderDocumentToPngBytes } from './render-document-headless.js';
+export type {
+  HeadlessRenderOptions,
+  HeadlessRenderResult,
+  PreloadedFont,
+} from './render-document-headless.js';
