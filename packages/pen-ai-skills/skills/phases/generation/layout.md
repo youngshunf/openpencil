@@ -87,3 +87,13 @@ RING / CIRCLE WITH CENTER CONTENT (Apple Activity Ring, progress ring, badge, av
   flex layout instead.
 - textAlignVertical is NOT supported. Use a layout=horizontal/vertical parent + alignItems=center
   - justifyContent=center to center text inside any container.
+
+ICON + LABEL ROW (input fields, list rows, chips, icon buttons) — prevents the "misaligned icon" bug:
+
+- Any "icon next to text" must be a layout="horizontal" frame with alignItems="center" and a gap.
+  The frame vertically centers the icon against the text automatically.
+- NEVER use layout="none" + absolute x/y to drop an icon into an input or beside a label.
+  Hand-placed x/y does not track the text baseline/height → the icon ends up too high/low or overlapping
+  ("各种错位"). This is the most common misalignment cause in forms, list items and nav.
+- Input field = frame(layout="horizontal", alignItems="center", gap, padding) > [iconPath, text]. NOT a
+  rectangle with a separately-positioned icon and text floating on top.

@@ -8,17 +8,23 @@ budget: 1000
 category: base
 ---
 
-ICONS:
+ICONS (USE PATH NODES — they always resolve):
 
-- Use "path" nodes, size 16-24px. ONLY use Feather icon names — PascalCase + "Icon" suffix (e.g. "SearchIcon").
-- System auto-resolves names to SVG paths. "d" is replaced automatically.
-- NEVER use emoji as icons. Use icon_font nodes for lucide icons.
+- Use "path" nodes, size 16-24px. Name = icon name in PascalCase + "Icon" suffix (e.g. "SearchIcon", "MailIcon", "LockIcon").
+- The system auto-resolves the name to verified SVG path data — set d to any placeholder (e.g. "M0 0"); "d" is REPLACED automatically. Do NOT hand-author icon geometry.
+- Names resolve against Lucide (1700+ icons) AND Feather AND brand logos. Any common UI icon name works. The marker word ("Icon"/"Logo") is required so real custom geometry isn't mistaken for an icon.
+- Line icons resolve to stroke style; solid icons (star, play, brand logos) to fill. Set the color via stroke.fill (line) or fill (solid) — the resolver preserves your color.
+- NEVER use emoji as icons (emoji in text is auto-stripped).
 
-ICON_FONT NODES:
+BRAND / SOCIAL LOGOS (for social login, share, footer):
 
-- Use icon_font type with iconFontName for lucide icons (e.g. iconFontName="search", "bell", "user").
-- Sizes: 14/20/24px. Fill can be a color string.
-- Icon-only buttons: frame(w=44, h=44, layout=none) > icon_font(x=12, y=12)
+- Resolve as path nodes too, filled: "WechatIcon", "QqIcon", "WeiboIcon", "AlipayIcon", "AppleIcon", "GoogleIcon", "GithubIcon", "DingtalkIcon", "TiktokIcon"/"DouyinIcon", "TelegramIcon", "WhatsappIcon", "XIcon"/"TwitterIcon", "FacebookIcon", "InstagramIcon", "LinkedinIcon", "YoutubeIcon", "BilibiliIcon", "XiaohongshuIcon".
+- Use the brand's own color as fill (WeChat #07C160, QQ #12B7F5, Google #EA4335, Apple #000000), or a neutral icon color inside a bordered circular button.
+
+ICON_FONT NODES (avoid — prefer path nodes):
+
+- icon_font (lucide font glyphs) does NOT auto-resolve in headless/file generation. PREFER path nodes (above) everywhere so the design renders correctly without the editor.
+- Icon-only buttons: frame(w=44, h=44, layout="horizontal", alignItems="center", justifyContent="center") > path icon 20-24px. Do NOT use layout="none" + absolute x/y to position the icon (renders unreliably / misaligns).
 
 COMMON LUCIDE ICON NAMES:
 search, bell, user, heart, star, plus, x, check, chevron-right, chevron-left, chevron-down, chevron-up,
