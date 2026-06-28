@@ -846,6 +846,21 @@ const vi: TranslationKeys = {
   'variablePicker.bindToVariable': 'Gắn với biến',
   'variablePicker.unbind': 'Huỷ gắn biến',
   'variablePicker.noVariables': 'Chưa có biến {{type}} nào được định nghĩa',
+  // ── AI Chat · 唤星协作改图（仅唤星编辑器语境） ──
+  'ai.collabTitle': 'Ask your design partner to refine this design',
+  'ai.refineWithDesigner': 'Tell your design partner what to change...',
+  'ai.quickAction.collabColor': 'Refine the color scheme',
+  'ai.quickAction.collabColorDesc': 'More cohesive palette',
+  'ai.quickAction.collabColorPrompt': 'Keeping the existing content and layout, refine the overall color scheme to feel more cohesive',
+  'ai.quickAction.collabSpacing': 'Tidy spacing & alignment',
+  'ai.quickAction.collabSpacingDesc': 'Cleaner layout',
+  'ai.quickAction.collabSpacingPrompt': 'Improve the spacing and alignment of the elements so the layout looks cleaner, without changing the copy',
+  'ai.quickAction.collabPolish': 'Polish visual details',
+  'ai.quickAction.collabPolishDesc': 'Type scale & whitespace',
+  'ai.quickAction.collabPolishPrompt': 'Polish the visual details of the current design: refine the type hierarchy, whitespace, and emphasis for a more refined look',
+  'ai.quickAction.collabModule': 'Add a section',
+  'ai.quickAction.collabModuleDesc': 'Extend the current design',
+  'ai.quickAction.collabModulePrompt': 'Add a new content section to the current design, keeping the style consistent',
 } as const;
 
 export default vi;

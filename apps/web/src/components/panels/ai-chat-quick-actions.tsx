@@ -1,7 +1,16 @@
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { isHuanxingProjectContext } from '@/lib/huanxing-context';
 
-const QUICK_ACTIONS = [
+interface QuickAction {
+  emoji: string;
+  labelKey: string;
+  descKey: string;
+  promptKey: string;
+}
+
+// 独立 OpenPencil（无 `?project=`）默认体验：从零新建设计。
+const CREATE_QUICK_ACTIONS: QuickAction[] = [
   {
     emoji: '📱',
     labelKey: 'ai.quickAction.loginScreen',
@@ -28,6 +37,34 @@ const QUICK_ACTIONS = [
   },
 ];
 
+// 唤星编辑器语境（带 `?project=`）：画布上往往已有设计，引导在现有设计上协作改图。
+const COLLAB_QUICK_ACTIONS: QuickAction[] = [
+  {
+    emoji: '🎨',
+    labelKey: 'ai.quickAction.collabColor',
+    descKey: 'ai.quickAction.collabColorDesc',
+    promptKey: 'ai.quickAction.collabColorPrompt',
+  },
+  {
+    emoji: '📐',
+    labelKey: 'ai.quickAction.collabSpacing',
+    descKey: 'ai.quickAction.collabSpacingDesc',
+    promptKey: 'ai.quickAction.collabSpacingPrompt',
+  },
+  {
+    emoji: '✨',
+    labelKey: 'ai.quickAction.collabPolish',
+    descKey: 'ai.quickAction.collabPolishDesc',
+    promptKey: 'ai.quickAction.collabPolishPrompt',
+  },
+  {
+    emoji: '➕',
+    labelKey: 'ai.quickAction.collabModule',
+    descKey: 'ai.quickAction.collabModuleDesc',
+    promptKey: 'ai.quickAction.collabModulePrompt',
+  },
+];
+
 interface AIChatQuickActionsProps {
   onSend: (prompt: string) => void;
   disabled: boolean;
@@ -36,11 +73,16 @@ interface AIChatQuickActionsProps {
 export function AIChatQuickActions({ onSend, disabled }: AIChatQuickActionsProps) {
   const { t } = useTranslation();
 
+  // 唤星语境下引导协作改图；独立 OpenPencil 保留原「从零新建」默认。
+  const collaborate = isHuanxingProjectContext();
+  const actions = collaborate ? COLLAB_QUICK_ACTIONS : CREATE_QUICK_ACTIONS;
+  const titleKey = collaborate ? 'ai.collabTitle' : 'ai.startDesigning';
+
   return (
     <div className="flex flex-col items-center justify-center py-6 px-1">
-      <p className="text-xs text-muted-foreground mb-4">{t('ai.startDesigning')}</p>
+      <p className="text-xs text-muted-foreground mb-4">{t(titleKey)}</p>
       <div className="grid grid-cols-2 gap-2 w-full">
-        {QUICK_ACTIONS.map((action) => (
+        {actions.map((action) => (
           <button
             key={action.labelKey}
             type="button"

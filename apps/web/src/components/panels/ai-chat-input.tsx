@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { Send, ChevronUp, Paperclip, X, Square, Key, Plug } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import { cn } from '@/lib/utils';
+import { isHuanxingProjectContext } from '@/lib/huanxing-context';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { useAIStore } from '@/stores/ai-store';
@@ -139,7 +140,13 @@ export function AIChatInput({ input, setInput, onSend }: AIChatInputProps) {
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
-        placeholder={isStreaming ? t('ai.generating') : t('ai.designWithAgent')}
+        placeholder={
+          isStreaming
+            ? t('ai.generating')
+            : isHuanxingProjectContext()
+              ? t('ai.refineWithDesigner')
+              : t('ai.designWithAgent')
+        }
         disabled={isStreaming}
         rows={2}
         className="w-full bg-transparent text-sm text-foreground placeholder-muted-foreground px-3.5 pt-3 pb-2 resize-none outline-none max-h-28 min-h-[52px]"

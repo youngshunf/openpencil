@@ -827,6 +827,21 @@ const zh: TranslationKeys = {
   'variablePicker.bindToVariable': '绑定到变量',
   'variablePicker.unbind': '解除绑定',
   'variablePicker.noVariables': '未定义 {{type}} 类型的变量',
+  // ── AI Chat · 唤星协作改图（仅唤星编辑器语境） ──
+  'ai.collabTitle': '让设计分身帮你改图',
+  'ai.refineWithDesigner': '告诉设计分身改哪里…',
+  'ai.quickAction.collabColor': '调整整体配色',
+  'ai.quickAction.collabColorDesc': '让画面更协调统一',
+  'ai.quickAction.collabColorPrompt': '在保留现有内容和版式的前提下，把整体配色调整得更协调统一一些',
+  'ai.quickAction.collabSpacing': '优化间距与对齐',
+  'ai.quickAction.collabSpacingDesc': '让排版更整齐',
+  'ai.quickAction.collabSpacingPrompt': '优化各元素的间距与对齐，让整体排版更整齐规整，不改动文案内容',
+  'ai.quickAction.collabPolish': '精修视觉细节',
+  'ai.quickAction.collabPolishDesc': '字号层级与留白',
+  'ai.quickAction.collabPolishPrompt': '在现有设计基础上精修视觉细节：调整字号层级、留白和重点突出，让画面更有质感',
+  'ai.quickAction.collabModule': '补充一个区块',
+  'ai.quickAction.collabModuleDesc': '在现有设计上新增内容',
+  'ai.quickAction.collabModulePrompt': '在现有设计的基础上，补充一个新的内容区块，风格与现有保持一致',
 } as const;
 
 export default zh;
