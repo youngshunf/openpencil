@@ -32,6 +32,7 @@
   "dependencies": {
     "@iconify-json/feather": "^1.2.1",
     "@iconify-json/lucide": "^1.2.93",
+    "@iconify-json/simple-icons": "^1.2.71",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@zseven-w/pen-ai-skills": "workspace:*",
     "@zseven-w/pen-core": "workspace:*",

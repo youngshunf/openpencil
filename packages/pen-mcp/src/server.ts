@@ -45,6 +45,7 @@ import {
   DEBUG_TOOL_NAMES,
   handleDebugToolCall,
 } from './routes/debug-routes';
+import { installIconHooks } from './icons';
 
 const pkg = { name: '@zseven-w/pen-mcp', version: '0.6.0' };
 
@@ -241,6 +242,12 @@ function parseArgs(): { stdio: boolean; http: boolean; port: number } {
 
 async function main() {
   const { stdio, http, port } = parseArgs();
+
+  // Wire the bundled headless icon resolvers so file-mode / headless design
+  // generation resolves icon names (e.g. "MailIcon") to real SVG paths.
+  // Without a host app (web) injecting hooks, icon nodes would otherwise keep
+  // their placeholder `d` and render as boxes.
+  installIconHooks();
 
   if (DEBUG_ENABLED) {
     console.error(
