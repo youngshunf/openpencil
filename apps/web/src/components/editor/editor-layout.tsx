@@ -192,6 +192,11 @@ export default function EditorLayout() {
   useEffect(() => {
     initAppStorage().then(() => {
       useAgentSettingsStore.getState().hydrate();
+      // Out-of-the-box editor AI: reconcile the env-backed 唤星 default provider from the
+      // host runtime (daemon-injected). When available, the built-in AI works without a key.
+      import('@/services/ai/huanxing-default').then(({ syncHuanxingDefaultProvider }) =>
+        syncHuanxingDefaultProvider(),
+      );
       useUIKitStore.getState().hydrate();
       useCanvasStore.getState().hydrate();
       // Sync recent files to Electron native menu on startup

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Key, Pencil, Trash2 } from 'lucide-react';
+import { Check, Key, Pencil, Sparkles, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -34,6 +34,32 @@ export function BuiltinProviderCard({ provider }: { provider: BuiltinProviderCon
     },
     [provider.id, update, persist],
   );
+
+  // env-backed 唤星 provider: read-only, auto-connected, non-deletable, non-editable. The real
+  // credentials live in the host runtime (daemon-injected) — there is nothing for the user to set.
+  if (provider.envBacked) {
+    return (
+      <div className="flex items-center gap-3 px-3.5 py-2.5 rounded-lg border border-border bg-secondary/30">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-primary/10 text-primary">
+          <Sparkles size={18} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <span className="text-[13px] font-medium text-foreground leading-tight block">
+            {provider.displayName}
+          </span>
+          {provider.model && (
+            <span className="text-[11px] text-muted-foreground leading-tight mt-0.5 block">
+              {provider.model}
+            </span>
+          )}
+          <span className="text-[11px] text-green-500 leading-tight flex items-center gap-1 mt-0.5">
+            <Check size={10} strokeWidth={2.5} />
+            {t('builtin.autoConnected', '已自动连接')}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   if (editing) {
     return (

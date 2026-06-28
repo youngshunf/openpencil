@@ -164,6 +164,12 @@ interface AgentProviderConfig {
   baseURL?: string;
   maxOutputTokens?: number;
   maxContextTokens?: number;
+  /**
+   * env-backed 唤星 default provider: don't send a real key/baseURL — the server reads its
+   * env-injected credentials. Set `builtinProviderId: 'huanxing'` so the server substitutes them.
+   */
+  builtinProviderId?: string;
+  useHuanxingDefault?: boolean;
 }
 
 /** Strip <think>...</think> tags (closed and unclosed) from model text output. */
@@ -246,6 +252,10 @@ async function runAgentStream(
     apiKey: providerConfig.apiKey,
     model: providerConfig.model,
     ...(providerConfig.baseURL ? { baseURL: providerConfig.baseURL } : {}),
+    ...(providerConfig.builtinProviderId
+      ? { builtinProviderId: providerConfig.builtinProviderId }
+      : {}),
+    ...(providerConfig.useHuanxingDefault ? { useHuanxingDefault: true } : {}),
     ...(providerConfig.maxOutputTokens ? { maxOutputTokens: providerConfig.maxOutputTokens } : {}),
     ...(providerConfig.maxContextTokens
       ? { maxContextTokens: providerConfig.maxContextTokens }
@@ -564,7 +574,8 @@ export function useChatHandlers() {
 
         const { builtinProviders } = useAgentSettingsStore.getState();
         const bp = builtinProviders.find((p) => p.id === builtinProviderId);
-        if (!bp || !bp.apiKey) {
+        // env-backed providers (e.g. 唤星) carry no client-side apiKey — the daemon holds it.
+        if (!bp || (!bp.apiKey && !bp.envBacked)) {
           accumulated = !bp
             ? `**Error:** ${i18n.t('builtin.errorProviderNotFound')}`
             : `**Error:** ${i18n.t('builtin.errorApiKeyEmpty')}`;
@@ -584,15 +595,21 @@ export function useChatHandlers() {
         }
 
         useAIStore.getState().clearToolCallBlocks();
+        // env-backed 唤星 default: send the provider id + flag instead of a (nonexistent) key.
+        // The server substitutes its env-injected credentials (走主人积分). Others send their key.
+        const isEnvBacked = !!bp.envBacked;
         try {
           const result = await runAgentStream(
             assistantMsg.id,
             {
               providerType: bp.type === 'anthropic' ? 'anthropic' : 'openai-compat',
-              apiKey: bp.apiKey,
+              apiKey: isEnvBacked ? 'env' : bp.apiKey,
               model: modelName,
-              baseURL: bp.baseURL,
+              ...(isEnvBacked ? {} : { baseURL: bp.baseURL }),
               maxContextTokens: bp.maxContextTokens,
+              ...(isEnvBacked
+                ? { builtinProviderId: bp.id, useHuanxingDefault: true }
+                : {}),
             },
             abortController,
           );

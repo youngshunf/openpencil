@@ -132,7 +132,15 @@ export async function* streamChat(
       if (currentModel.startsWith('builtin:')) {
         const bpId = currentModel.split(':')[1];
         const bp = useAgentSettingsStore.getState().builtinProviders.find((p) => p.id === bpId);
-        if (bp) {
+        if (bp?.envBacked) {
+          // env-backed 唤星 default: let the server use its env-injected credentials (走主人积分);
+          // never send a key/baseURL the frontend doesn't have.
+          builtinFields = {
+            builtinProviderId: bp.id,
+            useHuanxingDefault: true,
+            builtinType: 'openai-compat',
+          };
+        } else if (bp) {
           builtinFields = {
             builtinApiKey: bp.apiKey,
             builtinBaseURL: bp.baseURL,

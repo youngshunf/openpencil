@@ -42,6 +42,10 @@ import {
   normalizeMemberBaseURL,
   requireOpenAICompatBaseURL,
 } from './provider-url';
+import {
+  isHuanxingDefaultRequest,
+  requireHuanxingDefaultCredentials,
+} from './huanxing-provider';
 import { startSSEKeepAlive } from '../../utils/sse-keepalive';
 import { getAcpConnection } from '../../utils/acp-connection-manager';
 import { getMcpServerStatus } from '../../utils/mcp-server-manager';
@@ -190,6 +194,10 @@ interface AgentBody {
   hasVariables?: boolean;
   acpAgentId?: string;
   acpConfig?: import('../../../src/types/agent-settings').AcpAgentConfig;
+  /** Built-in provider id; `huanxing` selects the env-backed 唤星 default provider. */
+  builtinProviderId?: string;
+  /** Use the env-injected 唤星 default credentials (ignore client apiKey/baseURL). */
+  useHuanxingDefault?: boolean;
 }
 
 /** Map Zig event JSON to client SSE format.
@@ -476,6 +484,24 @@ export default defineEventHandler(async (event) => {
 
   // ── Start agent loop (SSE stream) ──────────────────────────
   const body = await readBody<AgentBody>(event);
+
+  // ── 唤星 env-backed default provider ────────────────────────
+  // Substitute the env-injected 唤星 credentials (走主人积分) for the empty client-sent
+  // apiKey/baseURL. Always OpenAI-compatible (new-api gateway). Real key only ever lives in
+  // this process's env — the frontend never holds it. Zero fake: throws if env is missing.
+  if (
+    body &&
+    isHuanxingDefaultRequest({
+      useHuanxingDefault: body.useHuanxingDefault,
+      builtinProviderId: body.builtinProviderId,
+    })
+  ) {
+    const cred = requireHuanxingDefaultCredentials(body.model);
+    body.providerType = 'openai-compat';
+    body.apiKey = cred.apiKey;
+    body.baseURL = cred.baseURL;
+    body.model = cred.model;
+  }
 
   // ── ACP Agent path ──────────────────────────────────────────
   if (body?.providerType === 'acp' && body.acpAgentId) {

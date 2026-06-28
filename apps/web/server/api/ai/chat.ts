@@ -15,6 +15,10 @@ import {
   normalizeOptionalBaseURL,
   requireOpenAICompatBaseURL,
 } from './provider-url';
+import {
+  isHuanxingDefaultRequest,
+  requireHuanxingDefaultCredentials,
+} from './huanxing-provider';
 // SENSITIVE_LOG_PATTERN + readDebugTail are now canonical in @zseven-w/pen-mcp.
 // Re-export here to keep existing consumers (tests, other modules) working.
 import { SENSITIVE_LOG_PATTERN, readDebugTail } from '@zseven-w/pen-mcp';
@@ -52,6 +56,10 @@ interface ChatBody {
   builtinBaseURL?: string;
   /** For builtin provider: 'anthropic' or 'openai-compat' */
   builtinType?: 'anthropic' | 'openai-compat';
+  /** Built-in provider id; `huanxing` selects the env-backed 唤星 default provider. */
+  builtinProviderId?: string;
+  /** Use the env-injected 唤星 default credentials (ignore client apiKey/baseURL). */
+  useHuanxingDefault?: boolean;
 }
 
 function buildClaudeExitHint(rawError: string, debugTail?: string[]): string | undefined {
@@ -1000,23 +1008,36 @@ function streamViaBuiltin(body: ChatBody) {
           destroyProvider,
         } = await import('@zseven-w/agent-native');
 
-        const apiKey = body.builtinApiKey;
         const rawModel = body.model?.trim() ?? '';
         // Model string may be "builtin:<providerId>:<actualModel>" — extract the actual model name
         const model = rawModel.startsWith('builtin:')
           ? rawModel.split(':').slice(2).join(':')
           : rawModel;
-        if (!apiKey || !model) throw new Error('Builtin provider requires apiKey and model');
 
-        const normalizedBuiltinBaseURL = normalizeOptionalBaseURL(body.builtinBaseURL);
-        const builtinProvider =
-          body.builtinType === 'anthropic'
-            ? createAnthropicProvider(apiKey, model, normalizedBuiltinBaseURL)
-            : createOpenAICompatProvider(
-                apiKey,
-                requireOpenAICompatBaseURL(normalizedBuiltinBaseURL),
-                model,
-              );
+        // 唤星 env-backed default provider: ignore client-sent apiKey/baseURL, use env credentials
+        // (走主人积分；真实 key 只在本进程 env 里，前端从未持有)。Always OpenAI-compatible (new-api).
+        const useHuanxing = isHuanxingDefaultRequest({
+          useHuanxingDefault: body.useHuanxingDefault,
+          builtinProviderId: body.builtinProviderId,
+        });
+
+        let builtinProvider;
+        if (useHuanxing) {
+          const cred = requireHuanxingDefaultCredentials(model);
+          builtinProvider = createOpenAICompatProvider(cred.apiKey, cred.baseURL, cred.model);
+        } else {
+          const apiKey = body.builtinApiKey;
+          if (!apiKey || !model) throw new Error('Builtin provider requires apiKey and model');
+          const normalizedBuiltinBaseURL = normalizeOptionalBaseURL(body.builtinBaseURL);
+          builtinProvider =
+            body.builtinType === 'anthropic'
+              ? createAnthropicProvider(apiKey, model, normalizedBuiltinBaseURL)
+              : createOpenAICompatProvider(
+                  apiKey,
+                  requireOpenAICompatBaseURL(normalizedBuiltinBaseURL),
+                  model,
+                );
+        }
 
         // Pure streaming — no tools, maxTurns=1 prevents agentic looping
         const builtinEngine = createQueryEngine({

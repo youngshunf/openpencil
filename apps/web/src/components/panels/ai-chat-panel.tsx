@@ -146,7 +146,8 @@ export default function AIChatPanel() {
     }));
 
     for (const bp of builtinProviders) {
-      if (!bp.enabled || !bp.apiKey) continue;
+      // env-backed providers (e.g. 唤星) carry no client-side apiKey — the daemon holds it.
+      if (!bp.enabled || (!bp.apiKey && !bp.envBacked)) continue;
       const providerType: AIProviderType = bp.type === 'anthropic' ? 'anthropic' : 'openai';
       groups.push({
         provider: providerType,

@@ -46,7 +46,16 @@ export interface BuiltinProviderConfig {
   preset?: BuiltinProviderPreset;
   maxContextTokens?: number;
   enabled: boolean;
+  /**
+   * env-backed by the host runtime (daemon-injected). The real apiKey/baseURL live in the
+   * server process env, not here — for env-backed providers `apiKey`/`baseURL` are empty and
+   * requests are routed via `useHuanxingDefault`. Read-only / non-deletable in the UI.
+   */
+  envBacked?: boolean;
 }
+
+/** Reserved id for the env-backed 唤星 (Huanxing) default provider. */
+export const HUANXING_PROVIDER_ID = 'huanxing';
 
 interface PersistedState {
   providers: Record<AIProviderType, AIProviderConfig>;
@@ -95,6 +104,16 @@ interface AgentSettingsState extends PersistedState {
   addBuiltinProvider: (config: Omit<BuiltinProviderConfig, 'id'>) => string;
   updateBuiltinProvider: (id: string, updates: Partial<BuiltinProviderConfig>) => void;
   removeBuiltinProvider: (id: string) => void;
+  /**
+   * Reconcile the env-backed 唤星 default provider against the host runtime.
+   * `available` ⇒ ensure exactly one `huanxing` provider exists (env-backed, no key).
+   * `!available` ⇒ remove any stale `huanxing` provider. Idempotent (id-deduped).
+   */
+  syncHuanxingDefaultProvider: (info: {
+    available: boolean;
+    label: string;
+    model: string;
+  }) => void;
   addAcpAgent: (config: Omit<AcpAgentConfig, 'id'>) => string;
   updateAcpAgent: (id: string, updates: Partial<AcpAgentConfig>) => void;
   removeAcpAgent: (id: string) => void;
@@ -283,6 +302,28 @@ export const useAgentSettingsStore = create<AgentSettingsState>((set, get) => ({
       builtinProviders: s.builtinProviders.filter((p) => p.id !== id),
     })),
 
+  syncHuanxingDefaultProvider: ({ available, label, model }) =>
+    set((s) => {
+      // Always drop any existing 唤星 entry first (rebuild from host runtime each startup).
+      const others = s.builtinProviders.filter((p) => p.id !== HUANXING_PROVIDER_ID);
+      if (!available) {
+        // Only emit a new array when something actually changed (avoid render churn).
+        return others.length === s.builtinProviders.length ? {} : { builtinProviders: others };
+      }
+      // env-backed: empty apiKey/baseURL (the daemon holds the real credentials), enabled.
+      const huanxing: BuiltinProviderConfig = {
+        id: HUANXING_PROVIDER_ID,
+        displayName: label || '唤星',
+        type: 'openai-compat',
+        apiKey: '',
+        baseURL: '',
+        model,
+        enabled: true,
+        envBacked: true,
+      };
+      return { builtinProviders: [huanxing, ...others] };
+    }),
+
   addAcpAgent: (config) => {
     const id = `acp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     set((s) => ({ acpAgents: [...s.acpAgents, { ...config, id }] }));
@@ -400,9 +441,11 @@ export const useAgentSettingsStore = create<AgentSettingsState>((set, get) => ({
       const builtinProviders = (data as Record<string, unknown>).builtinProviders;
       if (Array.isArray(builtinProviders)) {
         set({
-          builtinProviders: builtinProviders.map((p: unknown) =>
-            canonicalizeBuiltinProviderConfig(p as BuiltinProviderConfig),
-          ) as BuiltinProviderConfig[],
+          builtinProviders: (builtinProviders as BuiltinProviderConfig[])
+            // Drop any persisted env-backed 唤星 entry — it is rebuilt each startup from the
+            // host runtime (`syncHuanxingDefaultProvider`), so available=false removes it.
+            .filter((p) => p?.id !== HUANXING_PROVIDER_ID && !p?.envBacked)
+            .map((p) => canonicalizeBuiltinProviderConfig(p)),
         });
       }
       const stored = data as Record<string, unknown>;
