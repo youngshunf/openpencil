@@ -8,10 +8,10 @@ import { useCanvasStore } from '@/stores/canvas-store';
 import {
   exportActivePageImage,
   exportDocumentPdf,
-  downloadBlob,
   sanitizeFilename,
   type GlobalExportFormat,
 } from '@/utils/global-export';
+import { saveBlobWithPicker } from '@/utils/save-bytes';
 
 interface ExportDialogProps {
   open: boolean;
@@ -48,36 +48,44 @@ export default function ExportDialog({ open, onClose }: ExportDialogProps) {
     setBusy(true);
     // Yield to React so the spinner shows before the heavy CanvasKit work blocks the main thread.
     setTimeout(() => {
-      try {
-        const doc = useDocumentStore.getState().document;
-        const fileName = useDocumentStore.getState().fileName;
-        const baseName = sanitizeFilename(
-          (fileName || '').replace(/\.(op|pen|json)$/i, '') || 'untitled',
-          'untitled',
-        );
+      void (async () => {
+        try {
+          const doc = useDocumentStore.getState().document;
+          const fileName = useDocumentStore.getState().fileName;
+          const baseName = sanitizeFilename(
+            (fileName || '').replace(/\.(op|pen|json)$/i, '') || 'untitled',
+            'untitled',
+          );
 
-        if (format === 'pdf') {
-          const blob = exportDocumentPdf(doc, scale);
-          if (!blob) {
-            console.error('[ExportDialog] PDF export produced no output');
+          // Native "Save As" on desktop (WKWebView), File System Access in browsers,
+          // blob download as a last resort — a bare <a download> is dropped by Tauri.
+          if (format === 'pdf') {
+            const blob = exportDocumentPdf(doc, scale);
+            if (!blob) {
+              console.error('[ExportDialog] PDF export produced no output');
+              return;
+            }
+            await saveBlobWithPicker(blob, `${baseName}.pdf`, [
+              { name: 'PDF 文档', extensions: ['pdf'] },
+            ]);
+            onClose();
             return;
           }
-          downloadBlob(blob, `${baseName}.pdf`);
-          onClose();
-          return;
-        }
 
-        const activePageId = useCanvasStore.getState().activePageId;
-        const result = exportActivePageImage(doc, activePageId, format, scale);
-        if (!result) {
-          console.error('[ExportDialog] Image export produced no output');
-          return;
+          const activePageId = useCanvasStore.getState().activePageId;
+          const result = exportActivePageImage(doc, activePageId, format, scale);
+          if (!result) {
+            console.error('[ExportDialog] Image export produced no output');
+            return;
+          }
+          await saveBlobWithPicker(result.blob, `${baseName}.${result.ext}`, [
+            { name: `${result.ext.toUpperCase()} 图片`, extensions: [result.ext] },
+          ]);
+          onClose();
+        } finally {
+          setBusy(false);
         }
-        downloadBlob(result.blob, `${baseName}.${result.ext}`);
-        onClose();
-      } finally {
-        setBusy(false);
-      }
+      })();
     }, 0);
   };
 
