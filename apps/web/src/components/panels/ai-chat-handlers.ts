@@ -202,6 +202,78 @@ function buildAgentEmptyOutputFallback({
 }
 
 /**
+ * 方案B：把编辑器内置 AI 对话框的需求回调 daemon，交主人的设计分身在当前项目画布上接力出图。
+ *
+ * 编辑器直连 sidecar origin 打开，内置对话框无法同源调云端 / daemon 业务 API、也没有 daemon
+ * session cookie，原 env-backed 唤星 provider 走的本地 agent-native（Zig napi）未随引擎打包、恒 500。
+ * 改 POST 本 sidecar 的 `/api/ai/huanxing-design-dispatch`：sidecar 后端带 sidecar token 回调 daemon
+ * `/api/v1/design/sidecar-dispatch`（daemon 反查 token→owner，自动解析设计分身派工作会话，分身用
+ * hasn.design.* 在这块画布上接力出图——主人在本编辑器即可实时看到画布更新）。
+ *
+ * 返回：
+ * - `'not_in_huanxing'`：非唤星宿主（独立 OpenPencil）→ 调用方回落到 runAgentStream（直连内置 AI）。
+ * - `'handled'`：已交分身处理（或诚实跳过/失败）——状态已由 `onStatus` 写进助手气泡，调用方收尾即可。
+ *
+ * `onStatus` 把面向主人的**诚实**状态写进当前助手气泡（把分身当人，绝不伪造已出图）。
+ */
+async function dispatchToHuanxingDesigner(
+  projectId: string,
+  brief: string,
+  onStatus: (markdown: string) => void,
+): Promise<'not_in_huanxing' | 'handled'> {
+  let payload: {
+    ok?: boolean;
+    reason?: string;
+    status?: number;
+    result?: Record<string, unknown>;
+  };
+  try {
+    const res = await fetch('/api/ai/huanxing-design-dispatch', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ projectId, brief }),
+    });
+    payload = (await res.json()) as typeof payload;
+  } catch {
+    onStatus('暂时联系不上你的唤星节点，没能把这次需求交给设计分身，请稍后再试。');
+    return 'handled';
+  }
+
+  if (!payload.ok) {
+    if (payload.reason === 'not_in_huanxing') {
+      return 'not_in_huanxing';
+    }
+    const reasonText =
+      payload.reason === 'missing_project'
+        ? '没识别到当前设计项目，请从唤星「设计」应用里打开项目后再试。'
+        : payload.reason === 'missing_brief'
+          ? '请先说一句你想让设计分身做什么。'
+          : payload.reason === 'daemon_unreachable'
+            ? '暂时联系不上你的唤星节点，请稍后再试。'
+            : '把需求交给设计分身时出了点问题，请稍后再试。';
+    onStatus(reasonText);
+    return 'handled';
+  }
+
+  const result = payload.result ?? {};
+  if (result.dispatched === false) {
+    const skip =
+      typeof result.skip_reason === 'string'
+        ? result.skip_reason
+        : '暂时无法安排设计分身，请稍后再试。';
+    onStatus(skip);
+    return 'handled';
+  }
+
+  // 已派给设计分身：诚实告知主人——TA 正在这块画布上接力出图（绝不伪造已出图）。
+  onStatus(
+    '已交给你的设计分身啦 ✦ TA 正在这块画布上为你出图，稍候你会看到画布更新，' +
+      '也可以在「设计」应用的本项目里查看进度。',
+  );
+  return 'handled';
+}
+
+/**
  * Send a message through the agent pipeline.
  * Opens an SSE connection to /api/ai/agent, dispatches tool calls
  * client-side, and updates the AI store in real time.
@@ -598,6 +670,36 @@ export function useChatHandlers() {
         // env-backed 唤星 default: send the provider id + flag instead of a (nonexistent) key.
         // The server substitutes its env-injected credentials (走主人积分). Others send their key.
         const isEnvBacked = !!bp.envBacked;
+
+        // 方案B：唤星 env-backed 内置 provider → 不走死的本地 agent-native，改回调 daemon 交主人的
+        // 设计分身在当前项目画布上接力出图。非唤星宿主（独立 OpenPencil）则回落到下方 runAgentStream。
+        if (isEnvBacked) {
+          const projectId = new URLSearchParams(window.location.search).get('project') ?? '';
+          const outcome = await dispatchToHuanxingDesigner(
+            projectId,
+            messageText,
+            (markdown) => {
+              accumulated = markdown;
+              updateLastMessage(accumulated);
+            },
+          );
+          if (outcome === 'handled') {
+            useAIStore.getState().setAbortController(null);
+            setStreaming(false);
+            useAIStore.setState((s) => {
+              const msgs = [...s.messages];
+              const last = msgs.find((m) => m.id === assistantMsg.id);
+              if (last) {
+                last.content = accumulated;
+                last.isStreaming = false;
+              }
+              return { messages: msgs };
+            });
+            return;
+          }
+          // outcome === 'not_in_huanxing' → 继续走下方 runAgentStream（独立 OpenPencil 直连内置 AI）。
+        }
+
         try {
           const result = await runAgentStream(
             assistantMsg.id,
