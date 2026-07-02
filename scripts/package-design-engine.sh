@@ -155,10 +155,19 @@ detect_os_arch() {
     MINGW* | MSYS* | CYGWIN*) os=win ;;
     *) echo "不支持的构建主机 OS: $(uname -s)" >&2; exit 1 ;;
   esac
-  case "$(uname -m)" in
+  local machine
+  machine="$(uname -m)"
+  # Rosetta 陷阱：Apple Silicon 上若本脚本由 x86_64 版 bash（如 /usr/local/bin/bash homebrew Intel 版）
+  # 经 Rosetta 运行，uname -m 会谎报 x86_64。真实硬件仍是 arm64（Rosetta 只在 arm64 主机上翻译 x86_64），
+  # 据 sysctl.proc_translated=1 纠正回 arm64，避免把 arm64 包错标成 darwin-x86_64 发上云。
+  if [[ "${os}" == "darwin" && "${machine}" == "x86_64" \
+        && "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" == "1" ]]; then
+    machine="arm64"
+  fi
+  case "${machine}" in
     arm64 | aarch64) arch=aarch64 ;;
     x86_64 | amd64) arch=x86_64 ;;
-    *) echo "不支持的构建主机架构: $(uname -m)" >&2; exit 1 ;;
+    *) echo "不支持的构建主机架构: ${machine}" >&2; exit 1 ;;
   esac
   echo "${os}-${arch}"
 }
