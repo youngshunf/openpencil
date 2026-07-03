@@ -220,7 +220,7 @@ fi
 if [[ "${SKIP_BUILD}" != "1" ]]; then
   command -v bun >/dev/null 2>&1 || { echo "[design-pkg] 需要 bun 构建 OpenPencil（或加 --skip-build 用既有 out/）" >&2; exit 1; }
 fi
-command -v zip >/dev/null 2>&1 || { echo "[design-pkg] 需要 zip 打包" >&2; exit 1; }
+command -v zip >/dev/null 2>&1 || command -v python3 >/dev/null 2>&1 || { echo "[design-pkg] 需要 zip 或 python3 打包" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "[design-pkg] 需要 python3 写 manifest" >&2; exit 1; }
 
 # 内置 bun 运行时依赖：下载（curl）+ 解包（unzip）+ 当前 os-arch 有对应 bun 资产。
@@ -315,7 +315,25 @@ PKG_PATH="${OUT_DIR}/${PKG_NAME}"
 rm -f "${PKG_PATH}"
 echo "[design-pkg] 打包 → ${PKG_PATH}（含 out${ZIP_RUNTIME_DIR:+ + ${ZIP_RUNTIME_DIR}}）"
 # 顶层含 out/（+ runtime/bun，若内置）；zip 保留 unix 可执行位（daemon unpack_zip 据此还原 +x）。
-( cd "${STAGE}" && zip -r -q -X "${PKG_PATH}" out ${ZIP_RUNTIME_DIR} )
+if command -v zip >/dev/null 2>&1; then
+  ( cd "${STAGE}" && zip -r -q -X "${PKG_PATH}" out ${ZIP_RUNTIME_DIR} )
+else
+  # 无 zip（如 Windows Git Bash）：用 python zipfile 打包顶层 out/(+ runtime/)。win 包 runtime 为 bun.exe，
+  # Windows 侧无需 unix 可执行位；deflate 压缩，保持相对路径顶层前缀。
+  ( cd "${STAGE}" && PKG_OUT="${PKG_PATH}" ZIP_DIRS="out ${ZIP_RUNTIME_DIR}" python3 - <<'PY'
+import os, zipfile
+out = os.environ["PKG_OUT"]
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    for d in os.environ["ZIP_DIRS"].split():
+        if not d or not os.path.isdir(d):
+            continue
+        for root, _dirs, files in os.walk(d):
+            for name in files:
+                full = os.path.join(root, name)
+                z.write(full, full.replace(os.sep, "/"))
+PY
+  )
+fi
 
 if command -v sha256sum >/dev/null 2>&1; then
   SHA256="$(sha256sum "${PKG_PATH}" | awk '{print $1}')"
