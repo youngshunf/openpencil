@@ -388,10 +388,17 @@ if [[ -n "${PUBLISH_URL}" ]]; then
   # 服务端权威算 sha256（交叉校验）+ size，落公共桶，写 config_json.engine，push platform_config。
   # token 经 Authorization 头（不进 URL/日志）；-sS 静默但报错，-w 附 HTTP 码。
   HTTP_BODY_FILE="${OUT_DIR}/.publish-resp-${OS_ARCH}.json"
-  HTTP_CODE="$(curl -sS -o "${HTTP_BODY_FILE}" -w '%{http_code}' \
+  # Windows(Git Bash)：mingw curl 读不了 /d/... 的 MSYS 路径（-o 写 / -F @ 读均 curl(26) 失败），
+  # 有 cygpath 时统一转 D:/... Windows 路径喂给 curl；bash 侧仍用原 MSYS 路径读同一物理文件。
+  CURL_PKG_PATH="${PKG_PATH}"; CURL_BODY_FILE="${HTTP_BODY_FILE}"
+  if command -v cygpath >/dev/null 2>&1; then
+    CURL_PKG_PATH="$(cygpath -m "${PKG_PATH}")"
+    CURL_BODY_FILE="$(cygpath -m "${HTTP_BODY_FILE}")"
+  fi
+  HTTP_CODE="$(curl -sS -o "${CURL_BODY_FILE}" -w '%{http_code}' \
     -X POST "${ENDPOINT}" \
     -H "Authorization: Bearer ${ADMIN_TOKEN}" \
-    -F "file=@${PKG_PATH};type=application/zip" \
+    -F "file=@${CURL_PKG_PATH};type=application/zip" \
     -F "os_arch=${OS_ARCH}" \
     -F "version=${VERSION}" \
     -F "sha256=${SHA256}" || echo "000")"
